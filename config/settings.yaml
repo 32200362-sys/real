@@ -1,0 +1,123 @@
+camera:
+  index: 1
+  width: 640
+  height: 480
+  fps: 30
+  mirror: false
+
+vision:
+  yolo_model_path: yolo11n.pt
+  yolo_confidence: 0.4
+  yolo_max_det: 20
+  pose_model_path: models/pose_landmarker_lite.task
+  fallback_enabled: true
+  fallback_marker_id: 10
+  hand_model_path: models/hand_landmarker.task
+  num_hands: 2
+  min_hand_detection_confidence: 0.55
+  min_hand_presence_confidence: 0.55
+  min_tracking_confidence: 0.55
+  aruco_dictionary: DICT_4X4_50
+  marker_ids:
+    cup: 10
+    coaster: 20
+    laptop: 30
+    paper: 40
+
+runtime:
+  profile: pc
+  profiles:
+    pc: {yolo_every_n_frames: 1, pose_every_n_frames: 1, hand_every_n_frames: 1, yolo_imgsz: 640, collect_data: false}
+    pi: {yolo_every_n_frames: 3, pose_every_n_frames: 2, hand_every_n_frames: 1, yolo_imgsz: 320, collect_data: false}
+
+tracking:
+  min_confidence: 0.4
+  min_iou: 0.1
+  max_center_distance_px: 100.0
+  max_missed_frames: 5
+
+behavior:
+  mode: rule
+  model_path: null
+  min_closing_speed_px_s: 40.0
+  collision_ttc_s: 1.5
+  reaching_ttc_s: 3.0
+  hold_distance_px: 80.0
+  hold_speed_px_s: 30.0
+  safe_distance_px: 220.0
+  confirm_frames: 2
+  unknown_grace_frames: 0
+
+data_collection:
+  enabled: false
+  directory: data/collection
+  sample_interval_s: 1.5
+  pre_event_s: 2.0
+  post_event_s: 3.0
+  event_cooldown_s: 5.0
+
+motion:
+  smoothing_alpha: 0.35
+  velocity_smoothing_alpha: 0.45
+  min_dt_s: 0.01
+  max_dt_s: 0.25
+  stale_track_s: 1.0
+
+risk:
+  # 640x480 기준 초기값. 실제 카메라 높이와 화각에 맞춰 조정합니다.
+  distance_far_px: 320.0
+  distance_danger_px: 120.0
+  speed_max_px_s: 700.0
+  closing_rate_max_px_s: 500.0
+  scale_rate_max_s: 1.5
+  angle_full_deg: 25.0
+  angle_zero_deg: 75.0
+  warning_threshold: 45.0
+  avoid_threshold: 70.0
+  hold_distance_px: 115.0
+  hold_speed_px_s: 80.0
+  weights:
+    distance: 0.34
+    speed: 0.16
+    direction: 0.22
+    closing: 0.23
+    scale: 0.05
+
+state:
+  avoid_confirm_frames: 3
+  safe_confirm_frames: 10
+  hold_confirm_seconds: 0.55
+  hold_release_distance_px: 180.0
+  return_timeout_seconds: 2.0
+
+planner:
+  avoid_speed_m_s: 0.18
+  return_speed_m_s: 0.12
+  max_speed_m_s: 0.25
+  home_tolerance_px: 25.0
+  command_deadband_m_s: 0.015
+
+udp:
+  enabled: false
+  host: 192.168.0.50          # ESP32 시리얼 모니터의 STATUS에 나오는 IP
+  port: 8888                  # ESP32 command port
+  send_hz: 20.0
+  protocol: esp32_json        # esp32_json(현재 펌웨어) | sc1(구형 ASCII)
+  telemetry_enabled: true
+  telemetry_port: 8889        # ESP32 -> 노트북 상태 보고
+  heartbeat_interval_s: 1.0   # 복구 가능한 fault(CMD_TIMEOUT 등) 자동 해제 주기
+  start_armed: false          # true면 실행 즉시 모터 명령 전송. 기본은 카메라 창에서 M 키로 활성화
+  speed_status: RUN           # RUN(최대 15cm/s) | SLOW(최대 5cm/s)
+  max_linear_cm_s: 15.0       # 30 이상이면 ESP32가 SPEED_LIMIT fault
+  max_angular_rad_s: 1.0
+  heading_source: marker      # marker: 코스터 마커(ID 20) 방향 사용 | fixed: offset만 사용
+  heading_offset_deg: 0.0     # 화면의 빨간 FRONT 화살표가 실제 로봇 앞을 가리키도록 조정
+
+logging:
+  enabled: true
+  directory: data/logs
+  save_video: false
+
+ui:
+  display: true
+  window_name: Smart Coaster AI

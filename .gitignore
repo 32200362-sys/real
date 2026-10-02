@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+models/*.task
+models/*.pt
+data/collection/
+data/datasets/
+runs/
+pytest-cache-files-*/
+.test-tmp/
+data/logs/*.csv
+data/logs/*.mp4
+.DS_Store
+
+# 로컬 전용
+.claude/settings.local.json
+esp32/**/secrets.h
+.arduino-build/
