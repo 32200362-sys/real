@@ -78,6 +78,10 @@ const char *faultCodeName(FaultCode fault) {
     return "CONTROL_TIMING";
 }
 
+const char *motionStateLabel(MotionState state) {
+    return motionStateName(state);
+}
+
 const char *controllerModeName(ControllerMode mode) {
     return mode == ControllerMode::NETWORK ? "NETWORK" : "MANUAL_TEST";
 }

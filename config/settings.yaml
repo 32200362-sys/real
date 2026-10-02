@@ -11,16 +11,16 @@ vision:
   yolo_max_det: 20
   pose_model_path: models/pose_landmarker_lite.task
   fallback_enabled: true
-  fallback_marker_id: 10
+  fallback_marker_id: 1   # 컵 마커 ID (marker_ids.cup과 동일하게)
   hand_model_path: models/hand_landmarker.task
   num_hands: 2
   min_hand_detection_confidence: 0.55
   min_hand_presence_confidence: 0.55
   min_tracking_confidence: 0.55
   aruco_dictionary: DICT_4X4_50
-  marker_ids:
-    cup: 10
-    coaster: 20
+  marker_ids:           # grise-master/markers 기준: 0=로봇(코스터), 1=컵
+    cup: 1
+    coaster: 0
     laptop: 30
     paper: 40
 
@@ -99,7 +99,7 @@ planner:
 
 udp:
   enabled: false
-  host: 192.168.0.50          # ESP32 시리얼 모니터의 STATUS에 나오는 IP
+  host: 172.20.10.3           # ESP32 시리얼 모니터의 [WiFi] IP= (Wi-Fi가 바뀌면 IP도 바뀜)
   port: 8888                  # ESP32 command port
   send_hz: 20.0
   protocol: esp32_json        # esp32_json(현재 펌웨어) | sc1(구형 ASCII)

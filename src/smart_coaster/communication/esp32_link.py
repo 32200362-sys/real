@@ -60,6 +60,7 @@ class Esp32Packet:
     vy: float | None = None
     w: float | None = None
     status: str | None = None
+    dbg: str | None = None  # ESP32 시리얼 모니터에 찍힐 AI 상태 문구 (펌웨어는 모르는 키를 무시)
 
     def to_json(self) -> bytes:
         payload = {key: value for key, value in self.__dict__.items() if value is not None}
@@ -171,6 +172,7 @@ class Esp32Sender:
         self.armed = bool(config.start_armed)
         self.telemetry = telemetry
         self.marker_heading_deg: float | None = None
+        self.debug_text = ""
         self.last_packet: Esp32Packet | None = None
         self.sent_count = 0
         self.error_count = 0
@@ -202,10 +204,20 @@ class Esp32Sender:
         self._seq = (self._seq + 1) & 0xFFFFFFFF or 1
         return Esp32Packet(type=packet_type, session_id=self.session_id, seq=self._seq, **values)
 
+    def _dbg(self, note: str = "") -> str | None:
+        text = f"{self.debug_text} {note}".strip()
+        # JSON 이스케이프가 필요한 문자와 비ASCII는 제거하고 40자로 제한한다.
+        text = "".join(ch for ch in text if 32 <= ord(ch) < 127 and ch not in ('"', "\\"))[:40]
+        return text or None
+
     def build_packet(self, command: RobotCommand) -> Esp32Packet:
         heading = self.robot_heading_deg()
-        if not self.armed or command.cmd not in MOTION_COMMANDS or heading is None:
-            return self._next("stop")
+        if not self.armed:
+            return self._next("stop", dbg=self._dbg("[DISARMED]"))
+        if heading is None and command.cmd in MOTION_COMMANDS:
+            return self._next("stop", dbg=self._dbg("[NO MARKER]"))
+        if command.cmd not in MOTION_COMMANDS:
+            return self._next("stop", dbg=self._dbg())
         forward_m_s, left_m_s = image_to_robot_velocity(command.vx, command.vy, heading)
         vx_cm_s, vy_cm_s = forward_m_s * 100.0, left_m_s * 100.0
         linear = math.hypot(vx_cm_s, vy_cm_s)
@@ -213,7 +225,8 @@ class Esp32Sender:
             scale = self.config.max_linear_cm_s / linear
             vx_cm_s, vy_cm_s = vx_cm_s * scale, vy_cm_s * scale
         w = max(-self.config.max_angular_rad_s, min(self.config.max_angular_rad_s, command.wz))
-        return self._next("cmd_vel", vx=vx_cm_s, vy=vy_cm_s, w=w, status=self.config.speed_status)
+        return self._next("cmd_vel", vx=vx_cm_s, vy=vy_cm_s, w=w, status=self.config.speed_status,
+                          dbg=self._dbg())
 
     # ---- 전송 ----
     def _transmit(self, packet: Esp32Packet) -> bool:

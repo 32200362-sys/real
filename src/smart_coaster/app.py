@@ -50,13 +50,16 @@ class SmartCoasterApp:
             profile=profile, fallback_enabled=self.config.vision.fallback_enabled,
             fallback_marker_id=self.config.vision.fallback_marker_id,
             min_closing_speed=self.config.behavior.min_closing_speed_px_s,
+            coaster_marker_id=self.config.vision.marker_ids.get("coaster", 20),
         )
+        logger = SessionLogger(self.config.logging, self.config.resolve_path(self.config.logging.directory), float(self.config.camera.fps))
+        logger.coaster_marker_id = self.config.vision.marker_ids.get("coaster", 20)
         return SimpleNamespace(
             camera=CameraSource(self.source, self.config.camera), aruco=ArucoDetector(self.config.vision),
             processor=processor, risk=RiskCalculator(self.config.risk),
             state=StateMachine(self.config.state, self.config.risk), planner=AvoidancePlanner(self.config.planner),
             udp=self._build_sender(), view=DebugView(),
-            logger=SessionLogger(self.config.logging, self.config.resolve_path(self.config.logging.directory), float(self.config.camera.fps)),
+            logger=logger,
             collector=DataCollector(self.config.data_collection, self.config.resolve_path(self.config.data_collection.directory), float(self.config.camera.fps)),
             hand=hand_detector, pose=pose_detector,
         )
@@ -107,6 +110,8 @@ class SmartCoasterApp:
             from .communication.esp32_link import marker_heading_deg
             c.udp.update_marker_heading(marker_heading_deg(coaster_marker.corners) if coaster_marker else None)
         command = c.planner.plan(state, result.motion, coaster, risk, timestamp_ms)
+        if hasattr(c.udp, "debug_text"):
+            c.udp.debug_text = f"{state.state.value} {result.behavior.label.value} r={risk.score:.0f}"
         udp_sent = c.udp.send(command) if c.udp.enabled else False
         metadata = c.logger.log_frame(self.frame_index, result, markers, state, risk, command, udp_sent)
         if hasattr(frame, "shape"):

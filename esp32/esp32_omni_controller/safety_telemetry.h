@@ -5,6 +5,7 @@
 #include <WiFiUdp.h>
 #include <stdint.h>
 
+#include "kinematics_motion.h"
 #include "network_protocol.h"
 
 enum class FaultCode : uint8_t {
@@ -55,3 +56,4 @@ bool sendTelemetry(WiFiUDP &udp, const IPAddress &controllerIp,
                    uint16_t controllerPort, JsonDocument &document);
 const char *faultCodeName(FaultCode fault);
 const char *controllerModeName(ControllerMode mode);
+const char *motionStateLabel(motion_control::MotionState state);

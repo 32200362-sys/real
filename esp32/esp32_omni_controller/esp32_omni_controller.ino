@@ -46,12 +46,16 @@ bool udpStarted = false;
 bool controllerKnown = false;
 bool wifiWasConnected = false;
 bool manualPwmActive = false;
+bool serialLogEnabled = true;
+uint32_t lastRxLogMs = 0;
+CommandType lastLoggedType = CommandType::HEARTBEAT;
 
 char udpPacket[UDP_PACKET_MAX_BYTES + 1];
 char serialLine[128];
 size_t serialLength = 0;
 
 constexpr uint32_t MANUAL_SESSION_ID = 0x4D414E55U;
+constexpr uint32_t RX_LOG_PERIOD_MS = 250U;
 
 bool isMoving() {
     return motionState.state == MotionState::VELOCITY ||
@@ -61,7 +65,7 @@ bool isMoving() {
 }
 
 void printHelp() {
-    Serial.println("HELP STATUS PIN ENC ZERO AUTO MANUAL STOP");
+    Serial.println("HELP STATUS PIN ENC ZERO AUTO MANUAL STOP LOG[ON|OFF]");
     Serial.println("M1/M2/M3 <pwm> | ALL <p1> <p2> <p3>");
     Serial.println("VEL <vx_cm_s> <vy_cm_s> <w_rad_s>");
     Serial.println("MOVE <motion_id> <vx_cm_s> <vy_cm_s> <w_rad_s> <distance_cm>");
@@ -99,6 +103,58 @@ void printStatus() {
     Serial.println("==================");
 }
 
+const char *commandTypeLabel(CommandType type) {
+    switch (type) {
+        case CommandType::VELOCITY: return "cmd_vel";
+        case CommandType::MOVE: return "cmd_move";
+        case CommandType::STOP: return "stop";
+        case CommandType::HEARTBEAT: return "heartbeat";
+        case CommandType::RESET_FAULT: return "reset_fault";
+    }
+    return "?";
+}
+
+// The laptop appends a short "dbg" text (AI state / behavior / risk) to its
+// packets. It is extracted with a plain string search so the real-time decode
+// path stays untouched; the JSON decoder ignores the unknown key.
+void extractDebugText(const char *packet, char *out, size_t outSize) {
+    out[0] = '\0';
+    const char *key = strstr(packet, "\"dbg\":\"");
+    if (key == nullptr) {
+        return;
+    }
+    key += 7;
+    size_t length = 0;
+    while (key[length] != '\0' && key[length] != '"' && length + 1 < outSize) {
+        out[length] = key[length];
+        ++length;
+    }
+    out[length] = '\0';
+}
+
+// Rate limited (4Hz, immediate on command type change) so serial output never
+// stalls the 100Hz control tick. Heartbeats are not logged.
+void logReceivedPacket(const NormalizedCommand &command, const char *packet) {
+    if (!serialLogEnabled || command.type == CommandType::HEARTBEAT) {
+        return;
+    }
+    const uint32_t nowMs = millis();
+    if (command.type == lastLoggedType &&
+        uint32_t(nowMs - lastRxLogMs) < RX_LOG_PERIOD_MS) {
+        return;
+    }
+    lastLoggedType = command.type;
+    lastRxLogMs = nowMs;
+    char debugText[48];
+    extractDebugText(packet, debugText, sizeof(debugText));
+    Serial.printf("[RX] %s seq=%lu vx=%.1f vy=%.1f w=%.2f | state=%s fault=%s | AI: %s\n",
+                  commandTypeLabel(command.type),
+                  static_cast<unsigned long>(command.seq), command.vxCmS,
+                  command.vyCmS, command.wRadS,
+                  motionStateLabel(motionState.state),
+                  faultCodeName(safetyState.fault), debugText);
+}
+
 void printPins() {
     Serial.printf("STBY=%u\n", MOTOR_STBY_PIN);
     for (uint8_t i = 0; i < MOTOR_COUNT; ++i) {
@@ -126,6 +182,8 @@ void beginUdpIfConnected() {
 void beginWiFi() {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
+    // Modem sleep delays/drops incoming UDP (ping loss, missed commands).
+    WiFi.setSleep(false);
     if (strcmp(WIFI_SSID, "YOUR_WIFI_SSID") == 0 || WIFI_SSID[0] == '\0') {
         Serial.println("[WiFi] secrets.h is not configured");
         return;
@@ -273,6 +331,17 @@ void processSerialLine(char *line) {
         printPins();
     } else if (strcmp(commandName, "ENC") == 0) {
         printEncoders();
+    } else if (strcmp(commandName, "LOG") == 0) {
+        char option[8] = {};
+        if (sscanf(line, "%*s %7s", option) == 1) {
+            for (char *cursor = option; *cursor; ++cursor) {
+                *cursor = static_cast<char>(toupper(*cursor));
+            }
+            serialLogEnabled = strcmp(option, "OFF") != 0 && strcmp(option, "0") != 0;
+        } else {
+            serialLogEnabled = !serialLogEnabled;
+        }
+        Serial.printf("OK LOG %s\n", serialLogEnabled ? "ON" : "OFF");
     } else if (strcmp(commandName, "ZERO") == 0) {
         zeroEncoderReference();
         Serial.println("OK ZERO");
@@ -404,6 +473,7 @@ void serviceUdpRxBudgeted() {
                        commandAcceptance);
             continue;
         }
+        logReceivedPacket(decoded.command, udpPacket);
         handleAcceptedCommand(decoded.command, true, remoteIp);
     }
 }
@@ -508,6 +578,7 @@ void runTelemetryIfDue() {
 }  // namespace
 
 void setup() {
+    Serial.setTxBufferSize(512);
     Serial.begin(SERIAL_BAUD);
     initializeMotorOutputsSafe();
     attachEncoderInterrupts();

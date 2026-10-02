@@ -15,7 +15,7 @@ class FrameProcessor:
                  behavior_classifier: BehaviorClassifier, *, pose_detector=None,
                  hand_detector=None, person_selector=None, motion_tracker=None,
                  profile=None, fallback_enabled: bool = True, fallback_marker_id: int = 10,
-                 min_closing_speed: float = 40.0) -> None:
+                 min_closing_speed: float = 40.0, coaster_marker_id: int = 20) -> None:
         self.cup_detector = cup_detector
         self.cup_selector = cup_selector
         self.cup_tracker = cup_tracker
@@ -25,6 +25,7 @@ class FrameProcessor:
         self.profile = profile
         self.fallback_enabled, self.fallback_marker_id = fallback_enabled, fallback_marker_id
         self.min_closing_speed = min_closing_speed
+        self.coaster_marker_id = coaster_marker_id
         self._last_detections = []
         self._last_people = []
         self._last_hands = []
@@ -44,7 +45,7 @@ class FrameProcessor:
     def process_observations(self, frame, timestamp_ms: int, now_s: float, frame_index: int,
                              markers: list) -> FrameResult:
         by_id = {m.marker_id: m for m in markers}
-        coaster = by_id.get(20)
+        coaster = by_id.get(self.coaster_marker_id)
         coaster_center = coaster.center if coaster else None
         yolo_interval = self.profile.yolo_every_n_frames if self.profile else 1
         ran_yolo = frame_index % yolo_interval == 0

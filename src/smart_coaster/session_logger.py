@@ -45,6 +45,7 @@ class SessionLogger:
         self.writer = None
         self.video_writer = None
         self.stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.coaster_marker_id = 20
 
         if config.enabled:
             directory.mkdir(parents=True, exist_ok=True)
@@ -87,7 +88,7 @@ class SessionLogger:
 
     def log_frame(self, frame_index: int, result: FrameResult, markers, state, risk, command, udp_sent: bool) -> dict:
         track, interaction, person = result.cup_track, result.interaction, result.target_person
-        coaster = next((m.center for m in markers if m.marker_id == 20), None)
+        coaster = next((m.center for m in markers if m.marker_id == self.coaster_marker_id), None)
         def xy(point): return ("", "") if point is None else (round(point.x, 3), round(point.y, 3))
         wrist = xy(interaction.wrist if interaction else None); elbow = xy(interaction.elbow if interaction else None)
         shoulder = xy(interaction.shoulder if interaction else None); hand = xy(interaction.hand_position if interaction else None)
