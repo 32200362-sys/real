@@ -15,7 +15,8 @@ class FrameProcessor:
                  behavior_classifier: BehaviorClassifier, *, pose_detector=None,
                  hand_detector=None, person_selector=None, motion_tracker=None,
                  profile=None, fallback_enabled: bool = True, fallback_marker_id: int = 10,
-                 min_closing_speed: float = 40.0, coaster_marker_id: int = 20) -> None:
+                 min_closing_speed: float = 40.0, coaster_marker_id: int = 20,
+                 hand_only_fallback: bool = False) -> None:
         self.cup_detector = cup_detector
         self.cup_selector = cup_selector
         self.cup_tracker = cup_tracker
@@ -26,6 +27,8 @@ class FrameProcessor:
         self.fallback_enabled, self.fallback_marker_id = fallback_enabled, fallback_marker_id
         self.min_closing_speed = min_closing_speed
         self.coaster_marker_id = coaster_marker_id
+        # 팔(Pose)이 매칭되지 않을 때 컵에 가장 가까운 손만으로 판단한다.
+        self.hand_only_fallback = hand_only_fallback
         self._last_detections = []
         self._last_people = []
         self._last_hands = []
@@ -72,9 +75,14 @@ class FrameProcessor:
         matches = self.person_selector.match_hands(person, self._last_hands) if person and self.person_selector else {}
         matched_hand = next(iter(matches.values()), None)
         arm = next((a for a in person.arms if a.side in matches), None) if person else None
+        hand_only = False
+        if matched_hand is None and self.hand_only_fallback and self._last_hands and track is not None:
+            matched_hand = min(self._last_hands, key=lambda h: h.center.distance_to(track.center))
+            arm, hand_only = None, True
         motions = self.motion_tracker.update_all([matched_hand] if matched_hand else [], track.center if track else None, now_s) if self.motion_tracker else []
         motion = motions[0] if motions else None
-        interaction = build_interaction(motion, matched_hand, arm, self.min_closing_speed)
+        interaction = build_interaction(motion, matched_hand, arm, self.min_closing_speed,
+                                        allow_hand_only=hand_only)
         if coaster_center is None or track is None or interaction is None:
             behavior = BehaviorResult(BehaviorLabel.UNKNOWN, 1.0, "코스터/컵/사람 관측 부족")
         else:

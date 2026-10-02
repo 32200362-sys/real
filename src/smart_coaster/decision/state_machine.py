@@ -10,6 +10,7 @@ class StateMachine:
         self.risk_config = risk_config
         self.state = RobotState.IDLE
         self._avoid_count = 0
+        self._avoid_miss = 0
         self._safe_count = 0
         self._hold_candidate_since: float | None = None
         self._return_started_at: float | None = None
@@ -105,12 +106,24 @@ class StateMachine:
             self.state = RobotState.IDLE
             self._reset_counters()
             return StateUpdate(self.state, f"UNKNOWN: {behavior.reason}")
+        if label == BehaviorLabel.COLLISION_RISK:
+            # 충돌 위험은 HOLD보다 우선한다 (HOLD에 갇혀 회피하지 못하던 문제).
+            if self.state == RobotState.HOLD:
+                self.state = RobotState.TRACKING
+                self._hold_candidate_since = None
+            self._avoid_miss = 0
+            return self.update(risk, feature, True, timestamp_s)
         if label in {BehaviorLabel.REACHING, BehaviorLabel.HOLDING}:
+            # 충돌 위험 판정 사이에 끼는 1~2프레임의 REACHING은 판정 흔들림으로 보고
+            # 회피 카운트를 유지한다 (연속 3프레임 조건이 영원히 안 채워지던 문제).
+            if (label == BehaviorLabel.REACHING and self._avoid_count > 0
+                    and self._avoid_miss < self.config.avoid_grace_frames):
+                self._avoid_miss += 1
+                return StateUpdate(self.state, "충돌 위험 판정 유지(일시 흔들림)")
             self.state = RobotState.HOLD
             self._avoid_count = 0
+            self._avoid_miss = 0
             return StateUpdate(self.state, behavior.reason)
-        if label == BehaviorLabel.COLLISION_RISK:
-            return self.update(risk, feature, True, timestamp_s)
         if label == BehaviorLabel.RETRACTING and self.state == RobotState.AVOIDING:
             self._start_return(timestamp_s)
             return StateUpdate(self.state, behavior.reason)
@@ -139,6 +152,7 @@ class StateMachine:
 
     def _reset_counters(self, keep_hold: bool = False) -> None:
         self._avoid_count = 0
+        self._avoid_miss = 0
         self._safe_count = 0
         self._return_started_at = None
         if not keep_hold:

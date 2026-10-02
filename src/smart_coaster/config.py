@@ -33,6 +33,8 @@ class VisionConfig:
     pose_model_path: str = "models/pose_landmarker_lite.task"
     fallback_enabled: bool = True
     fallback_marker_id: int = 10
+    hand_only_fallback: bool = True
+    marker_hold_s: float = 0.5  # 마커가 잠깐 끊겨도 이 시간 동안은 마지막 위치를 유지
 
 
 @dataclass
@@ -127,6 +129,7 @@ class RiskConfig:
 @dataclass
 class StateConfig:
     avoid_confirm_frames: int = 3
+    avoid_grace_frames: int = 2  # 충돌 위험 판정 사이에 끼는 REACHING 등을 몇 프레임까지 흔들림으로 볼지
     safe_confirm_frames: int = 10
     hold_confirm_seconds: float = 0.55
     hold_release_distance_px: float = 180.0

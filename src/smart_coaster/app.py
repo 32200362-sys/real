@@ -12,6 +12,7 @@ class SmartCoasterApp:
         self.config, self.source = config, source
         self.components = components
         self.frame_index = 0
+        self._marker_cache: dict[int, tuple[float, object]] = {}
 
     def _build_components(self):
         from .behavior.rule_classifier import RuleBehaviorClassifier
@@ -51,6 +52,7 @@ class SmartCoasterApp:
             fallback_marker_id=self.config.vision.fallback_marker_id,
             min_closing_speed=self.config.behavior.min_closing_speed_px_s,
             coaster_marker_id=self.config.vision.marker_ids.get("coaster", 20),
+            hand_only_fallback=self.config.vision.hand_only_fallback,
         )
         logger = SessionLogger(self.config.logging, self.config.resolve_path(self.config.logging.directory), float(self.config.camera.fps))
         logger.coaster_marker_id = self.config.vision.marker_ids.get("coaster", 20)
@@ -94,9 +96,24 @@ class SmartCoasterApp:
             print("[ESP32] reset_fault 전송")
         return False
 
+    def _hold_recent_markers(self, markers: list, now_s: float) -> list:
+        """코스터/컵 마커가 1~몇 프레임 끊겨도 marker_hold_s 동안 마지막 관측을 유지한다."""
+        hold_s = self.config.vision.marker_hold_s
+        if hold_s <= 0:
+            return markers
+        wanted = {self.config.vision.marker_ids.get("coaster", 20), self.config.vision.fallback_marker_id}
+        seen = {m.marker_id for m in markers}
+        held = list(markers)
+        for marker_id in wanted:
+            if marker_id in seen:
+                self._marker_cache[marker_id] = (now_s, next(m for m in markers if m.marker_id == marker_id))
+            elif marker_id in self._marker_cache and now_s - self._marker_cache[marker_id][0] <= hold_s:
+                held.append(self._marker_cache[marker_id][1])
+        return held
+
     def process_frame(self, frame, timestamp_ms: int, now_s: float, fps: float = 0.0):
         c = self.components
-        markers = c.aruco.detect(frame)
+        markers = self._hold_recent_markers(c.aruco.detect(frame), now_s)
         result = c.processor.process_observations(frame, timestamp_ms, now_s, self.frame_index, markers)
         risk = c.risk.calculate(result.motion)
         if result.behavior.label.value == "COLLISION_RISK" and risk.score < self.config.risk.avoid_threshold:

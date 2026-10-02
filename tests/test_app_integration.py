@@ -84,3 +84,38 @@ def test_tracker_prediction_then_aruco_fallback():
     app, _, _ = make_app([0,0,0], yolo_values=[[],[],[]], markers=[marker(20,100,100), marker(10,90,100)])
     result, *_ = app.process_frame(object(),1000,0.0)
     assert result.cup_track.source == DetectionSource.ARUCO_FALLBACK
+
+
+def hand_only_app(enabled):
+    app, udp, collector = make_app([0, 80])
+    app.components.processor.pose_detector = Sequence([[]])  # 팔/사람 인식 없음
+    app.components.processor.hand_only_fallback = enabled
+    return app, udp
+
+
+def test_hand_only_fallback_avoids_without_pose():
+    app, _ = hand_only_app(True)
+    app.process_frame(object(), 1000, 0.0)
+    result, state, _, command, _ = app.process_frame(object(), 2000, 1.0)
+    assert result.behavior.label.value == "COLLISION_RISK"
+    assert state.state == RobotState.AVOIDING and command.cmd == "MOVE"
+    assert result.interaction.wrist is None and result.interaction.data_valid
+
+
+def test_without_fallback_missing_pose_stays_unknown_stop():
+    app, _ = hand_only_app(False)
+    app.process_frame(object(), 1000, 0.0)
+    result, state, _, command, _ = app.process_frame(object(), 2000, 1.0)
+    assert result.behavior.label.value == "UNKNOWN" and command.cmd == "STOP"
+
+
+def test_brief_marker_dropout_is_bridged_but_expires():
+    app, _, _ = make_app([0, 0, 0, 0], yolo_values=[[]])
+    seq = Sequence([[marker(20, 100, 100)], [], [], []])
+    app.components.aruco = seq
+    app.process_frame(object(), 1000, 0.0)
+    app.process_frame(object(), 1100, 0.2)   # 마커 끊김 프레임도 예외 없이 처리
+    held = app._hold_recent_markers([], 0.3)
+    assert any(m.marker_id == 20 for m in held)
+    expired = app._hold_recent_markers([], 1.0)         # 0.5초 초과 -> 제거
+    assert not any(m.marker_id == 20 for m in expired)

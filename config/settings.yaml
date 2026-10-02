@@ -12,6 +12,8 @@ vision:
   pose_model_path: models/pose_landmarker_lite.task
   fallback_enabled: true
   fallback_marker_id: 1   # 컵 마커 ID (marker_ids.cup과 동일하게)
+  hand_only_fallback: true   # 팔(Pose)이 안 잡혀도 컵에 가장 가까운 손만으로 판단
+  marker_hold_s: 0.5         # 코스터/컵 마커가 잠깐 끊겨도 마지막 위치를 유지하는 시간(초)
   hand_model_path: models/hand_landmarker.task
   num_hands: 2
   min_hand_detection_confidence: 0.55
@@ -85,6 +87,7 @@ risk:
 
 state:
   avoid_confirm_frames: 3
+  avoid_grace_frames: 2      # COLLISION_RISK 사이에 끼는 REACHING 등을 흔들림으로 허용하는 프레임 수
   safe_confirm_frames: 10
   hold_confirm_seconds: 0.55
   hold_release_distance_px: 180.0
